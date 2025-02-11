@@ -172,3 +172,4 @@ cython_debug/
 
 #firebase key
 api/key.json
+*.json
