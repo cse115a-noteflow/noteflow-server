@@ -14,7 +14,9 @@ def create_app():
     app.config['SECRET_KEY'] = 'abcdefg'
 
     from .userAPI import userAPI
+    from .ragAPI import ragAPI
+    
 
     app.register_blueprint(userAPI, url_prefix='/note')
-
+    app.register_blueprint(ragAPI, url_prefix='/rag')
     return app
