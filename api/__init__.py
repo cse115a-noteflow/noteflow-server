@@ -35,9 +35,12 @@ def create_app():
     app.config['SECRET_KEY'] = 'abcdefg'
 
     from .notesAPI import notesAPI
+    from api.openaiAPI import openaiAPI  # Absolute import
 
     # Must also wrap blueprints in CORS
     CORS(notesAPI, **args)
+    CORS(notesAPI, **args)
 
     app.register_blueprint(notesAPI, url_prefix='/notes')
+    app.register_blueprint(openaiAPI, url_prefix='/ai')
     return app
