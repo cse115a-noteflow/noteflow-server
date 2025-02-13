@@ -12,11 +12,11 @@ def rag_store(note_data):
     title = note_data["title"]
     description = note_data["description"]
     owner_email = note_data["owner"]
-    text_blocks = [" ".join(
+    text_blocks = [
         block["value"]
         for block in note_data.get("content", [])
         if block.get("value", "").strip()
-    )]
+    ]
     
     # Chunking the document
     note_chunks = chunk_notes(text_blocks, title, description, owner_email)
