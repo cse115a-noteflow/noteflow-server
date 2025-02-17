@@ -125,3 +125,50 @@ def search(id):
             return jsonify({"success": False, "error": f"Note not found"}), 404
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
+@notesAPI.route('/notes/share', methods=['POST'])
+def share_note(id):
+    try:
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+        
+        auth_token = auth_token.split(' ').pop()
+        decoded_token = auth.verify_id_token(auth_token)
+        sender_uid = decoded_token['uid']
+
+        # Parse request JSON
+        r = request.get_json()
+        recipient_email = r.get("email")
+        permission_level = r.get("permission", "editor")  # Default to editor
+
+        if not recipient_email:
+            return jsonify({"success": False, "error": "Recipient email required"}), 400
+
+        # Get recipient UID from email
+        recipient_user = auth.get_user_by_email(recipient_email)
+        recipient_uid = recipient_user.uid
+
+        # Fetch the note
+        note_doc = note_ref.document(id).get()
+        if not note_doc.exists:
+            return jsonify({"success": False, "error": "Note not found"}), 404
+
+        note_data = note_doc.to_dict()
+        permissions = note_data.get("permissions", {})
+
+        # Only allow owners to share
+        if sender_uid not in permissions or permissions[sender_uid] != "owner":
+            return jsonify({"success": False, "error": "Only the owner can share this note"}), 403
+
+        # Update permissions
+        permissions[recipient_uid] = permission_level
+        note_ref.document(id).update({"permissions": permissions})
+
+        return jsonify({"success": True, "message": f"Note shared with {recipient_email}"}), 200
+
+    except auth.UserNotFoundError:
+        return jsonify({"success": False, "error": "User with this email not found"}), 404
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
