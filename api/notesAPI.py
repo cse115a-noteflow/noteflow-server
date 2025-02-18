@@ -29,16 +29,22 @@ def get_notes():
         if query:
             # Search by query
             if cursor:
-                notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
+                owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'editor']).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
             else:
-                notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).page().stream()
+                owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).page().stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'editor']).where("title", ">", query).limit(limit).stream()
         else:
             # Get all notes
             if cursor:
-                notes = note_ref.where("owner", "==", uid).limit(limit).start_after({"id": cursor}).stream()
+                owned_notes = note_ref.where("owner", "==", uid).limit(limit).start_after({"id": cursor}).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', "in", ['view', 'editor']).limit(limit).start_after({"id": cursor}).stream()
             else:
-                notes = note_ref.where("owner", "==", uid).limit(limit).stream()
+                owned_notes = note_ref.where("owner", "==", uid).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'editor']).limit(limit).stream()
 
+        
+        notes = list(owned_notes) + list(shared_notes)
         notes = [note.to_dict() for note in notes]
 
         # To save on performance, don't return content
@@ -126,8 +132,8 @@ def search(id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@notesAPI.route('/notes/share', methods=['POST'])
-def share_note(id):
+@notesAPI.route('/<id>/share', methods=['POST'])
+def share(id):
     try:
         auth_token = request.headers.get('Authorization')
         if not auth_token:
@@ -155,10 +161,11 @@ def share_note(id):
             return jsonify({"success": False, "error": "Note not found"}), 404
 
         note_data = note_doc.to_dict()
+        owner = note_data.get("owner", {})
         permissions = note_data.get("permissions", {})
 
         # Only allow owners to share
-        if sender_uid not in permissions or permissions[sender_uid] != "owner":
+        if sender_uid != owner:
             return jsonify({"success": False, "error": "Only the owner can share this note"}), 403
 
         # Update permissions
@@ -168,7 +175,7 @@ def share_note(id):
         return jsonify({"success": True, "message": f"Note shared with {recipient_email}"}), 200
 
     except auth.UserNotFoundError:
-        return jsonify({"success": False, "error": "User with this email not found"}), 404
+        return jsonify({"success": False, "error": "User with this email not found" + recipient_user.uid}), 404
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
