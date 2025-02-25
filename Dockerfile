@@ -1,11 +1,12 @@
 # Use the official Python image as the base image
 FROM python:3.9
 
-# Install Flask and Gunicorn
-RUN pip install Flask flask_cors firebase_admin gunicorn
-
 # Set the working directory in the container
-WORKDIR /main
+WORKDIR /app
+
+# Install Flask and Gunicorn
+COPY requirements.txt requirements.txt
+RUN pip install -r requirements.txt
 
 # Copy all files to the container
 COPY . .
