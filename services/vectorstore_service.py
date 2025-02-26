@@ -8,6 +8,7 @@ INDEX_NAME = "noteflow"
 
 # Initialize Pinecone
 pc = Pinecone(api_key=PINECONE_API_KEY)
+
 index = pc.Index(INDEX_NAME)
 
 # Initialize OpenAI Embeddings

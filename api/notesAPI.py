@@ -30,18 +30,18 @@ def get_notes():
             # Search by query
             if cursor:
                 owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'editor']).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
             else:
                 owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).page().stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'editor']).where("title", ">", query).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).stream()
         else:
             # Get all notes
             if cursor:
                 owned_notes = note_ref.where("owner", "==", uid).limit(limit).start_after({"id": cursor}).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', "in", ['view', 'editor']).limit(limit).start_after({"id": cursor}).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', "in", ['view', 'edit']).limit(limit).start_after({"id": cursor}).stream()
             else:
                 owned_notes = note_ref.where("owner", "==", uid).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'editor']).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).limit(limit).stream()
 
         
         notes = list(owned_notes) + list(shared_notes)
@@ -146,7 +146,7 @@ def share(id):
         # Parse request JSON
         r = request.get_json()
         recipient_email = r.get("email")
-        permission_level = r.get("permission", "editor")  # Default to editor
+        permission_level = r.get("permission", "view")  # Default to editor
 
         if not recipient_email:
             return jsonify({"success": False, "error": "Recipient email required"}), 400
