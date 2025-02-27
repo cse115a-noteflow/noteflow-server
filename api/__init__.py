@@ -18,7 +18,7 @@ def create_app():
     args = {
         "supports_credentials": True,
         "methods": "*",
-        "origins": ["http://localhost:5173"],
+        "origins": ["http://localhost:5173", "https://cse115a-noteflow.github.io"],
     }
 
     # Flask-CORS doesn't seem to want to handle OPTIONS requests even though
