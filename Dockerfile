@@ -2,7 +2,7 @@
 FROM python:3.9
 
 # Set the working directory in the container
-WORKDIR /app
+WORKDIR /
 
 # Install Flask and Gunicorn
 COPY requirements.txt requirements.txt
@@ -15,5 +15,4 @@ COPY . .
 ENV PORT 8080
 
 # Start Gunicorn with the correct entry point
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app
-
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 api:create_app()
