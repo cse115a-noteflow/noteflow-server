@@ -1,8 +1,14 @@
 from flask import Flask, request, Response
 from flask_cors import CORS
 from firebase_admin import credentials, initialize_app
+from config import GOOGLE_SERVICE_ACCOUNT
+import json
 
-cred = credentials.Certificate("api/key.json")
+if GOOGLE_SERVICE_ACCOUNT:
+    cred = credentials.Certificate(json.loads(GOOGLE_SERVICE_ACCOUNT))
+else:
+    print("Using key.json for credentials.")
+    cred = credentials.Certificate("api/key.json")
 default_app = initialize_app(cred)
 
 
