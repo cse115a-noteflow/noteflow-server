@@ -1,18 +1,16 @@
 # Use the official Python image as the base image
 FROM python:3.9
 
-# Set the working directory in the container
-WORKDIR /
+ENV PYTHONUNBUFFERED True
 
-# Install Flask and Gunicorn
-COPY requirements.txt requirements.txt
-RUN pip install -r requirements.txt
+ENV APP_HOME /app
 
-# Copy all files to the container
-COPY . .
+ENV PORT 5000
 
-# Set environment variables
-ENV PORT 8080
+WORKDIR $APP_HOME
 
-# Start Gunicorn with the correct entry point
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 api:create_app()
+COPY . ./
+
+RUN pip install --no-cache-dir -r requirements.txt
+
+CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 --timeout 0 main:app
