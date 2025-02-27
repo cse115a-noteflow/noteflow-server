@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore, auth
 from uuid import uuid4
 from services.rag import rag_store, rag_remove, rag_query
+from datetime import datetime
 
 db = firestore.client()
 note_ref = db.collection('notes')
@@ -63,6 +64,8 @@ def add():
         id = str(uuid4())
         r = request.get_json()
         r['id'] = id
+        r['createdAt'] = datetime.now().timestamp()
+        r['modifiedAt'] = datetime.now().timestamp()
         note_ref.document(id).set(r)
 
         # Also store vectors in Pinecone
@@ -84,6 +87,7 @@ def put(id):
     
         # TODO: Add write permissions checks here
         
+        r['modifiedAt'] = datetime.now().timestamp()
         note_ref.document(id).set(r)
 
         # Also store vectors in Pinecone
