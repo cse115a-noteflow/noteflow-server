@@ -96,10 +96,21 @@ def put(id):
 @notesAPI.route('/<id>', methods=['GET'])
 def get(id):
     try:
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+        
+        auth_token = auth_token.split(' ').pop()
+        decoded_token = auth.verify_id_token(auth_token)
+        sender_uid = decoded_token['uid']
+
         note = note_ref.document(id).get()
 
         if note.exists:
-            return jsonify({"success": True, "data": note.to_dict()}), 200
+            if note.get("owner") == sender_uid or note.get('permissions.global') is not None or note.get(f'permissions.user.{sender_uid}.permission') in ['view', 'edit']:
+                return jsonify({"success": True, "data": note.to_dict()}), 200
+
+            return jsonify({"success": False, "error": f"No permission"}), 200
         else:
             return jsonify({"success": False, "error": f"Note not found"}), 404
     except Exception as e:
@@ -169,9 +180,13 @@ def share(id):
 
         for email, permission in user_permissions.items():
             try:
-                recipient_user = auth.get_user_by_email(email)
+                if "@" not in email:
+                    recipient_user = auth.get_user(email)
+                else:
+                    recipient_user = auth.get_user_by_email(email)
                 recipient_uid = recipient_user.uid
-                permissions[recipient_uid] = permission
+                recipient_name = recipient_user.display_name
+                permissions['user'][recipient_uid] = {"permission": permission, "name": recipient_name}
                 successes.append(email)
             except auth.UserNotFoundError:
                 failures.append(email)
