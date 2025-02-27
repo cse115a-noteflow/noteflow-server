@@ -8,7 +8,7 @@ note_ref = db.collection('notes')
 
 notesAPI = Blueprint('notesAPI', __name__, url_prefix='/notes')
 
-@notesAPI.route('/', methods=['GET'])
+@notesAPI.route('', methods=['GET'])
 def get_notes():
     try:
         auth_token = request.headers.get('Authorization')
@@ -57,7 +57,7 @@ def get_notes():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
-@notesAPI.route('/', methods=['POST'])
+@notesAPI.route('', methods=['POST'])
 def add():
     try:
         id = str(uuid4())
