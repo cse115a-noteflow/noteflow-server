@@ -3,6 +3,7 @@ from flask_cors import CORS
 from firebase_admin import credentials, initialize_app
 from config import GOOGLE_SERVICE_ACCOUNT
 import json
+import os
 
 if GOOGLE_SERVICE_ACCOUNT:
     cred = credentials.Certificate(json.loads(GOOGLE_SERVICE_ACCOUNT))
@@ -18,8 +19,12 @@ def create_app():
     args = {
         "supports_credentials": True,
         "methods": "*",
-        "origins": ["http://localhost:5173", "https://cse115a-noteflow.github.io"],
+        "origins": ["http://localhost:5173"],
     }
+
+    if os.getenv("ENV"):
+        # production
+        args["origins"] = ["https://cse115a-noteflow.github.io"]
 
     # Flask-CORS doesn't seem to want to handle OPTIONS requests even though
     # that's like the entire point of the library???
