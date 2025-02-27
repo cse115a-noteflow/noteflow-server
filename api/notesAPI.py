@@ -175,6 +175,8 @@ def share(id):
                 successes.append(email)
             except auth.UserNotFoundError:
                 failures.append(email)
+            
+        permissions["global"] = global_permissions
 
         note_ref.document(id).update({"permissions": permissions})
 
