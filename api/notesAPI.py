@@ -145,16 +145,12 @@ def share(id):
 
         # Parse request JSON
         r = request.get_json()
-        recipient_email = r.get("email")
-        permission_level = r.get("permission", "view")  # Default to editor
+        user_permissions = r.get("user")
+        global_permissions = r.get("global")
 
-        if not recipient_email:
-            return jsonify({"success": False, "error": "Recipient email required"}), 400
-
-        # Get recipient UID from email
-        recipient_user = auth.get_user_by_email(recipient_email)
-        recipient_uid = recipient_user.uid
-
+        if user_permissions is None or "global" not in r.keys():
+            return jsonify({"success": False, "error": "Bad request format"}), 400
+        
         # Fetch the note
         note_doc = note_ref.document(id).get()
         if not note_doc.exists:
@@ -168,11 +164,21 @@ def share(id):
         if sender_uid != owner:
             return jsonify({"success": False, "error": "Only the owner can share this note"}), 403
 
-        # Update permissions
-        permissions[recipient_uid] = permission_level
+        successes = []
+        failures = []
+
+        for email, permission in user_permissions.items():
+            try:
+                recipient_user = auth.get_user_by_email(email)
+                recipient_uid = recipient_user.uid
+                permissions[recipient_uid] = permission
+                successes.append(email)
+            except auth.UserNotFoundError:
+                failures.append(email)
+
         note_ref.document(id).update({"permissions": permissions})
 
-        return jsonify({"success": True, "message": f"Note shared with {recipient_email}"}), 200
+        return jsonify({"success": True, "successes": successes, "failures": failures, "permissions": permissions}), 200
 
     except auth.UserNotFoundError:
         return jsonify({"success": False, "error": "User with this email not found" + recipient_user.uid}), 404
