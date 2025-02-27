@@ -41,7 +41,7 @@ def get_notes():
                 shared_notes = note_ref.where(f'permissions.user.{uid}.permission', "in", ['view', 'edit']).limit(limit).start_after({"id": cursor}).stream()
             else:
                 owned_notes = note_ref.where("owner", "==", uid).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permissiom', 'in', ['view', 'edit']).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).limit(limit).stream()
 
         
         notes = list(owned_notes) + list(shared_notes)
