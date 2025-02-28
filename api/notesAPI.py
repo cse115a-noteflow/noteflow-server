@@ -169,7 +169,10 @@ def share(id):
 
         note_data = note_doc.to_dict()
         owner = note_data.get("owner", {})
-        permissions = note_data.get("permissions", {})
+        permissions = {
+            "user": {},
+            "global": None
+        }
 
         # Only allow owners to share
         if sender_uid != owner:
