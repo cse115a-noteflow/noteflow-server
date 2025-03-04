@@ -12,9 +12,17 @@ def query_llm(query, context, prompt=None, model="gpt-4o", top_k = 3):
 
     if prompt is None:
         prompt = f'''
-        You are an intelligent assistant that answers questions **only** based on the provided context on the note.
-        Do **not** use prior knowledge. If the note context does not contain enough information to answer the question, say:
-        "Your note does not provide an answer to this question."
+        
+        You are an intelligent assistant that answers questions strictly 
+        answers questions based only on the provided context in the note.
+        - Keep your tone friendly and helpful while staying within
+        these constraints.
+        - Do not use any external knowledge beyond what is explicitly
+        provided in the note.
+        - If the note does not contain sufficient information to
+        answer the question, respond with:
+        "I'm afraid your note does not provide an answer to this question."
+        
         Note Context:
         {context}
 
