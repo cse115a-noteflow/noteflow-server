@@ -36,10 +36,10 @@ def get_notes():
             # Search by query
             if cursor:
                 owned_notes = note_ref.where("owner", "==", uid).where("title", "<=", query).start_after(cursor).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", ">=", query).start_after({"title": cursor}).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", "<=", query).start_after({"title": cursor}).limit(limit).stream()
             else:
                 owned_notes = note_ref.where("owner", "==", uid).where("title", "<=", query).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", "<=", query).limit(limit).stream()
         else:
             # Get all notes
             if cursor:
@@ -52,7 +52,6 @@ def get_notes():
         print("NOTES array:", owned_notes)
         notes = list(owned_notes) + list(shared_notes)
         notes = [note.to_dict() for note in notes]
-        print(notes)
         # To save on performance, don't return content
         for note in notes:
             note.pop("content", None)
