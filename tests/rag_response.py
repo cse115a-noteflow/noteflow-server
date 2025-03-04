@@ -1,7 +1,7 @@
 import requests
 
 # Base URL for your Flask server
-base_url = "http://127.0.0.1:5000/rag"  # Update this to match your Flask route prefix
+base_url = "http://127.0.0.1:5000/notes"  # Update this to match your Flask route prefix
 
 # Define the JSON data for the note
 note_data = {
@@ -67,12 +67,12 @@ note_data = {
 }
 
 
-# Function to test the /store endpoint
+# Function to test the /add endpoint
 
 
-def test_store():
-    url = f"{base_url}/store"
-    print(f"Testing /store at {url}...")
+def test_add():
+    url = f"{base_url}/"
+    print(f"Testing /add at {url}...")
     try:
         response = requests.post(url, json=note_data)
         print("Response status code:", response.status_code)
@@ -125,14 +125,15 @@ def test_query_rag():
 if __name__ == "__main__":
     print("\n--- Testing Flask Endpoints ---\n")
     print("Choose an endpoint to test:")
-    print("1. Store (/store)")
+    print("1. Add (/add)")
     print("2. Remove Vectors (/remove_vectors)")
     print("3. Query RAG (/query)")
+    print("4. Test check")
 
     choice = input("Enter the number of the test to run (1/2/3): ").strip()
 
     if choice == "1":
-        test_store()
+        test_add()
     elif choice == "2":
         test_remove_vectors()
     elif choice == "3":

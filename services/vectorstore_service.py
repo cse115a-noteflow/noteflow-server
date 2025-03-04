@@ -1,5 +1,4 @@
 from pinecone import Pinecone
-import time
 from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
 from config import PINECONE_API_KEY, OPENAI_API_KEY
@@ -47,7 +46,6 @@ def save_note_vectors(note_id, note_chunks):
             namespace=note_id,
         )
         
-        time.sleep(1) # Wait for the index to update, sometimes takes more than 1 second
         print("Index after upsert:")
         print(pc.Index(INDEX_NAME).describe_index_stats())
         print("\n")
