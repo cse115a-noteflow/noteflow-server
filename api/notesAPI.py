@@ -2,18 +2,20 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore, auth
 from uuid import uuid4
 from services.rag import rag_store, rag_remove, rag_query
+import traceback
 
 db = firestore.client()
 note_ref = db.collection('notes')
 
 notesAPI = Blueprint('notesAPI', __name__, url_prefix='/notes')
 
-@notesAPI.route('', methods=['GET'])
+@notesAPI.route('/', methods=['GET'])
 def get_notes():
     try:
         auth_token = request.headers.get('Authorization')
         query = request.args.get('q')
         cursor = request.args.get('cursor') or None
+        sort_order = request.args.get('sort', 'asc')
         limit = 10
 
         if not auth_token:
@@ -25,28 +27,32 @@ def get_notes():
         # Get uid from ID token
         decoded_token = auth.verify_id_token(auth_token)
         uid = decoded_token['uid']
-
+        
+        # Determine Firestore sort direction
+        direction = firestore.Query.ASCENDING if sort_order == 'asc' else firestore.Query.DESCENDING
+        print(f"Sorting notes in {sort_order} order")  # Debugging log
+        print("Query:", query)
         if query:
             # Search by query
             if cursor:
-                owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
+                owned_notes = note_ref.where("owner", "==", uid).where("title", "<=", query).start_after(cursor).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", ">=", query).start_after({"title": cursor}).limit(limit).stream()
             else:
-                owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).page().stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).stream()
+                owned_notes = note_ref.where("owner", "==", uid).where("title", "<=", query).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).stream()
         else:
             # Get all notes
             if cursor:
-                owned_notes = note_ref.where("owner", "==", uid).limit(limit).start_after({"id": cursor}).stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', "in", ['view', 'edit']).limit(limit).start_after({"id": cursor}).stream()
+                owned_notes = note_ref.where("owner", "==", uid).order_by("title", direction=direction).start_after({"id": cursor}).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', "in", ['view', 'edit']).order_by("title", direction=direction).start_after({"id": cursor}).limit(limit).stream()
             else:
-                owned_notes = note_ref.where("owner", "==", uid).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).limit(limit).stream()
+                owned_notes = note_ref.where("owner", "==", uid).order_by("title", direction=direction).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).order_by("title", direction=direction).limit(limit).stream()
 
-        
+        print("NOTES array:", owned_notes)
         notes = list(owned_notes) + list(shared_notes)
         notes = [note.to_dict() for note in notes]
-
+        print(notes)
         # To save on performance, don't return content
         for note in notes:
             note.pop("content", None)
@@ -55,6 +61,7 @@ def get_notes():
         
         return jsonify({"success": True, "results": notes, "cursor": newCursor}), 200
     except Exception as e:
+        print("Error in get_notes:", traceback.format_exc())  # Logs full error traceback
         return jsonify({"success": False, "error": str(e)}), 500
 
 @notesAPI.route('', methods=['POST'])
