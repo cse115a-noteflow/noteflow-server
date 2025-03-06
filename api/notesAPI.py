@@ -2,6 +2,10 @@ from flask import Blueprint, request, jsonify
 from firebase_admin import firestore, auth
 from uuid import uuid4
 from services.rag import rag_store, rag_remove, rag_query
+import secrets
+from datetime import datetime, timedelta
+
+
 
 db = firestore.client()
 note_ref = db.collection('notes')
@@ -205,3 +209,100 @@ def share(id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+@notesAPI.route('/<id>/generate-share-link', methods=['POST'])
+def generate_share_link(id):
+    try:
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+
+        auth_token = auth_token.split(' ').pop()
+        decoded_token = auth.verify_id_token(auth_token)
+        sender_uid = decoded_token['uid']
+
+        r = request.get_json()
+        permission_level = r.get("permission", "view")  # Default to view
+
+        # Fetch the note
+        note_doc = note_ref.document(id).get()
+        if not note_doc.exists:
+            return jsonify({"success": False, "error": "Note not found"}), 404
+
+        note_data = note_doc.to_dict()
+
+        # Only owners or editors can generate a share link
+        if sender_uid != note_data["owner"] and note_data["permissions"].get(sender_uid) != "edit":
+            return jsonify({"success": False, "error": "You don't have permission to generate a share link"}), 403
+
+        # Generate a unique token
+        share_token = str(uuid4())
+
+        # Store the share link in Firestore
+        db.collection("shareLinks").document(share_token).set({
+            "noteId": id,
+            "permission": permission_level,
+            "createdAt": firestore.SERVER_TIMESTAMP,
+        })
+
+        return jsonify({"success": True, "token": share_token}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+    
+@notesAPI.route('/accept-share-link', methods=['POST'])
+def accept_share_link():
+    try:
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+
+        auth_token = auth_token.split(' ').pop()
+        decoded_token = auth.verify_id_token(auth_token)
+        recipient_uid = decoded_token['uid']
+
+        r = request.get_json()
+        share_token = r.get("shareToken")
+
+        print(f"[DEBUG] Received share token: {share_token}")
+
+        if not share_token:
+            print("[ERROR] Invalid share token")
+            return jsonify({"success": False, "error": "Invalid share token"}), 400
+
+        # Retrieve the token from Firestore
+        token_doc = db.collection("shareLinks").document(share_token).get()
+        if not token_doc.exists:
+            print("[ERROR] Invalid or expired share link")
+
+            return jsonify({"success": False, "error": "Invalid or expired share link"}), 404
+
+        token_data = token_doc.to_dict()
+        note_id = token_data["noteId"]
+        permission_level = token_data["permission"]
+
+        print(f"[DEBUG] Found token data: {token_data}")
+
+        # Fetch the note
+        note_doc = note_ref.document(note_id).get()
+        if not note_doc.exists:
+            print("[ERROR] Note not found")
+            return jsonify({"success": False, "error": "Note not found"}), 404
+
+        note_data = note_doc.to_dict()
+        permissions = note_data.get("permissions", {})
+        print(f"[DEBUG] Existing permissions: {permissions}")
+        # Grant the recipient the permission
+        
+
+        permissions["user"][recipient_uid] = {
+            "permission": permission_level,
+            "name": decoded_token.get("name", "Unknown User")
+        }
+
+        print(f"[DEBUG] Updated permissions: {permissions}")
+        note_ref.document(note_id).update({"permissions": permissions})
+        print("[SUCCESS] User granted permission")
+        return jsonify({"success": True, "message": f"Access granted as {permission_level}"}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
