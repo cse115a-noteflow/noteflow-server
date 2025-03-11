@@ -1,12 +1,20 @@
 from flask import Blueprint, request, jsonify
 from firebase_admin import firestore, auth
+from google.cloud.firestore_v1.base_query import FieldFilter, Or
 from uuid import uuid4
 from services.rag import rag_store, rag_remove, rag_query
+from datetime import datetime
 
 db = firestore.client()
 note_ref = db.collection('notes')
 
 notesAPI = Blueprint('notesAPI', __name__, url_prefix='/notes')
+
+def to_timestamp(firestoreTimestamp):
+    return firestoreTimestamp.isoformat()
+
+def to_time(timestamp):
+    return datetime.fromisoformat(timestamp)
 
 @notesAPI.route('', methods=['GET'])
 def get_notes():
@@ -29,33 +37,36 @@ def get_notes():
         
         # Determine Firestore sort direction
         direction = firestore.Query.ASCENDING if sort_order == 'asc' else firestore.Query.DESCENDING
-        print(f"Sorting notes in {sort_order} order")  # Debugging log
-        print("Query:", query)
-        if query:
-            # Search by query
-            if cursor:
-                owned_notes = note_ref.where("owner", "==", uid).where("title", "<=", query).start_after(cursor).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", "<=", query).start_after({"title": cursor}).limit(limit).stream()
-            else:
-                owned_notes = note_ref.where("owner", "==", uid).where("title", "<=", query).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).where("title", "<=", query).limit(limit).stream()
-        else:
-            # Get all notes
-            if cursor:
-                owned_notes = note_ref.where("owner", "==", uid).order_by("title", direction=direction).start_after({"id": cursor}).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', "in", ['view', 'edit']).order_by("title", direction=direction).start_after({"id": cursor}).limit(limit).stream()
-            else:
-                owned_notes = note_ref.where("owner", "==", uid).order_by("title", direction=direction).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.{uid}', 'in', ['view', 'edit']).order_by("title", direction=direction).limit(limit).stream()
 
-        print("NOTES array:", owned_notes)
-        notes = list(owned_notes) + list(shared_notes)
+        notes = note_ref.where(
+            filter=Or(
+                [
+                    FieldFilter("owner", "==", uid),
+                    FieldFilter("permissions.edit", "array_contains", uid),
+                    FieldFilter("permissions.view", "array_contains", uid),
+                ]
+            )
+        )
+
+        if query:
+            # Need to do this to bound the search, since Firebase doesn't support
+            # in text searching
+            endcode = query[:-1] + chr(ord(query[-1]) + 1)
+            notes = notes.where("title", ">=", query).where("title", "<", endcode)
+
+        if cursor:
+            notes = notes.start_after({"updatedAt": to_time(cursor)})
+
+        notes = notes.order_by("updatedAt", direction)
+
+        notes = notes.limit(limit).stream()
+        
         notes = [note.to_dict() for note in notes]
         # To save on performance, don't return content
         for note in notes:
             note.pop("content", None)
 
-        newCursor = notes[-1]['id'] if len(notes) == limit else None
+        newCursor = to_timestamp(notes[-1]['updatedAt']) if len(notes) == limit else None
         
         return jsonify({"success": True, "results": notes, "cursor": newCursor}), 200
     except Exception as e:
@@ -67,6 +78,8 @@ def add():
         id = str(uuid4())
         r = request.get_json()
         r['id'] = id
+        r['createdAt'] = firestore.SERVER_TIMESTAMP
+        r['updatedAt'] = firestore.SERVER_TIMESTAMP
         note_ref.document(id).set(r)
 
         # Also store vectors in Pinecone
@@ -79,21 +92,30 @@ def add():
 @notesAPI.route('/<id>', methods=['PUT'])
 def put(id):
     try:
-        # Todo - check permissions
         r = request.get_json()
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({"success": False, "error": "Missing Authorization header"}), 401
         if r['id'] != id:
             return jsonify({"success": False, "error": "ID mismatch"}), 400
-        if not note_ref.document(id).get().exists:
-            return jsonify({"success": False, "error": "Note not found"}), 404
-    
-        # TODO: Add write permissions checks here
         
-        note_ref.document(id).set(r)
+        auth_token = auth_token.split(' ').pop()
+        decoded_token = auth.verify_id_token(auth_token)
+        sender_uid = decoded_token['uid']
 
-        # Also store vectors in Pinecone
-        rag_store(r)
+        note = note_ref.document(id).get()
 
-        return jsonify({"success": True}), 200
+        if note.exists:
+            if note.get("owner") == sender_uid or note.get('permissions.global') == "edit" or sender_uid in note.get(f'permissions.edit'):
+                r['updatedAt'] = firestore.SERVER_TIMESTAMP
+                note_ref.document(id).set(r)
+                rag_store(r)
+                
+                return jsonify({"success": True, "data": note.to_dict()}), 200
+
+            return jsonify({"success": False, "error": f"No permission"}), 200
+        else:
+            return jsonify({"success": False, "error": f"Note not found"}), 404
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -111,7 +133,7 @@ def get(id):
         note = note_ref.document(id).get()
 
         if note.exists:
-            if note.get("owner") == sender_uid or note.get('permissions.global') is not None or note.get(f'permissions.user.{sender_uid}.permission') in ['view', 'edit']:
+            if note.get("owner") == sender_uid or note.get('permissions.global') is not None or sender_uid in note.get(f'permissions.view') or sender_uid in note.get(f'permissions.edit'):
                 return jsonify({"success": True, "data": note.to_dict()}), 200
 
             return jsonify({"success": False, "error": f"No permission"}), 200
@@ -174,7 +196,9 @@ def share(id):
         note_data = note_doc.to_dict()
         owner = note_data.get("owner", {})
         permissions = {
-            "user": {},
+            "view": [],
+            "edit": [],
+            "names": {},
             "global": None
         }
 
@@ -186,6 +210,9 @@ def share(id):
         failures = []
 
         for email, permission in user_permissions.items():
+            if permission not in ["view", "edit"]:
+                failures.append(email)
+                continue
             try:
                 if "@" not in email:
                     recipient_user = auth.get_user(email)
@@ -193,7 +220,8 @@ def share(id):
                     recipient_user = auth.get_user_by_email(email)
                 recipient_uid = recipient_user.uid
                 recipient_name = recipient_user.display_name
-                permissions['user'][recipient_uid] = {"permission": permission, "name": recipient_name}
+                permissions[permission].append(recipient_uid)
+                permissions['names'][recipient_uid] = recipient_name
                 successes.append(email)
             except auth.UserNotFoundError:
                 failures.append(email)
