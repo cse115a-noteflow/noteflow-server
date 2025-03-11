@@ -8,6 +8,7 @@ note_ref = db.collection('notes')
 
 notesAPI = Blueprint('notesAPI', __name__, url_prefix='/notes')
 
+
 @notesAPI.route('', methods=['GET'])
 def get_notes():
     try:
@@ -18,7 +19,7 @@ def get_notes():
 
         if not auth_token:
             return jsonify({"success": False, "error": "Missing Authorization header"}), 401
-        
+
         # Remove Bearer
         auth_token = auth_token.split(' ').pop()
 
@@ -29,21 +30,27 @@ def get_notes():
         if query:
             # Search by query
             if cursor:
-                owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).start_after({"id": cursor}).stream()
+                owned_notes = note_ref.where("owner", "==", uid).where(
+                    "title", ">", query).limit(limit).start_after({"id": cursor}).stream()
+                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).where(
+                    "title", ">", query).limit(limit).start_after({"id": cursor}).stream()
             else:
-                owned_notes = note_ref.where("owner", "==", uid).where("title", ">", query).limit(limit).page().stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).where("title", ">", query).limit(limit).stream()
+                owned_notes = note_ref.where("owner", "==", uid).where(
+                    "title", ">", query).limit(limit).page().stream()
+                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', [
+                                              'view', 'edit']).where("title", ">", query).limit(limit).stream()
         else:
             # Get all notes
             if cursor:
-                owned_notes = note_ref.where("owner", "==", uid).limit(limit).start_after({"id": cursor}).stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', "in", ['view', 'edit']).limit(limit).start_after({"id": cursor}).stream()
+                owned_notes = note_ref.where("owner", "==", uid).limit(
+                    limit).start_after({"id": cursor}).stream()
+                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', "in", [
+                                              'view', 'edit']).limit(limit).start_after({"id": cursor}).stream()
             else:
                 owned_notes = note_ref.where("owner", "==", uid).limit(limit).stream()
-                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', ['view', 'edit']).limit(limit).stream()
+                shared_notes = note_ref.where(f'permissions.user.{uid}.permission', 'in', [
+                                              'view', 'edit']).limit(limit).stream()
 
-        
         notes = list(owned_notes) + list(shared_notes)
         notes = [note.to_dict() for note in notes]
 
@@ -52,10 +59,11 @@ def get_notes():
             note.pop("content", None)
 
         newCursor = notes[-1]['id'] if len(notes) == limit else None
-        
+
         return jsonify({"success": True, "results": notes, "cursor": newCursor}), 200
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+
 
 @notesAPI.route('', methods=['POST'])
 def add():
@@ -72,6 +80,7 @@ def add():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 @notesAPI.route('/<id>', methods=['PUT'])
 def put(id):
     try:
@@ -81,9 +90,9 @@ def put(id):
             return jsonify({"success": False, "error": "ID mismatch"}), 400
         if not note_ref.document(id).get().exists:
             return jsonify({"success": False, "error": "Note not found"}), 404
-    
+
         # TODO: Add write permissions checks here
-        
+
         note_ref.document(id).set(r)
 
         # Also store vectors in Pinecone
@@ -93,13 +102,14 @@ def put(id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 @notesAPI.route('/<id>', methods=['GET'])
 def get(id):
     try:
         auth_token = request.headers.get('Authorization')
         if not auth_token:
             return jsonify({"success": False, "error": "Missing Authorization header"}), 401
-        
+
         auth_token = auth_token.split(' ').pop()
         decoded_token = auth.verify_id_token(auth_token)
         sender_uid = decoded_token['uid']
@@ -109,8 +119,7 @@ def get(id):
         if note.exists:
             if note.get("owner") == sender_uid or note.get('permissions.global') is not None or note.get(f'permissions.user.{sender_uid}.permission') in ['view', 'edit']:
                 return jsonify({"success": True, "data": note.to_dict()}), 200
-
-            return jsonify({"success": False, "error": f"No permission"}), 200
+            return jsonify({"success": False, "error": f"No permission"}), 201
         else:
             return jsonify({"success": False, "error": f"Note not found"}), 404
     except Exception as e:
@@ -143,13 +152,14 @@ def search(id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
 @notesAPI.route('/<id>/share', methods=['POST'])
 def share(id):
     try:
         auth_token = request.headers.get('Authorization')
         if not auth_token:
             return jsonify({"success": False, "error": "Missing Authorization header"}), 401
-        
+
         auth_token = auth_token.split(' ').pop()
         decoded_token = auth.verify_id_token(auth_token)
         sender_uid = decoded_token['uid']
@@ -161,7 +171,7 @@ def share(id):
 
         if user_permissions is None or "global" not in r.keys():
             return jsonify({"success": False, "error": "Bad request format"}), 400
-        
+
         # Fetch the note
         note_doc = note_ref.document(id).get()
         if not note_doc.exists:
@@ -189,11 +199,12 @@ def share(id):
                     recipient_user = auth.get_user_by_email(email)
                 recipient_uid = recipient_user.uid
                 recipient_name = recipient_user.display_name
-                permissions['user'][recipient_uid] = {"permission": permission, "name": recipient_name}
+                permissions['user'][recipient_uid] = {
+                    "permission": permission, "name": recipient_name}
                 successes.append(email)
             except auth.UserNotFoundError:
                 failures.append(email)
-            
+
         permissions["global"] = global_permissions
 
         note_ref.document(id).update({"permissions": permissions})
@@ -205,3 +216,45 @@ def share(id):
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
+
+@notesAPI.route('/<id>/link', methods=['POST'])
+def link(id):
+    try:
+        auth_token = request.headers.get('Authorization')
+        if not auth_token:
+            return jsonify({"success": False, "error": "Missing Authorization header"}), 401
+
+        try:
+            auth_token = auth_token.split(' ').pop()
+            decoded_token = auth.verify_id_token(auth_token)
+            user_uid = decoded_token.get('uid')
+            if not user_uid:
+                raise ValueError("Invalid token: UID not found")
+        except Exception as auth_error:
+            return jsonify({"success": False, "error": "Invalid or expired authentication token"}), 401
+
+        try:
+            note_doc = note_ref.document(id).get()
+            if not note_doc.exists:
+                return jsonify({"success": False, "error": "Note not found"}), 404
+        except Exception as db_error:
+            return jsonify({"success": False, "error": "Failed to retrieve note from database"}), 500
+
+        note_data = note_doc.to_dict()
+        permissions = note_data.get("permissions", {})
+        global_permissions = permissions.get("global", None)
+
+        if global_permissions == None:
+            return jsonify({"success": False, "error": "Access denied. Contact the note owner for access."}), 403
+
+        try:
+            permissions['user'][user_uid] = global_permissions
+            note_ref.document(id).update({"permissions": permissions})
+        except Exception as update_error:
+            return jsonify({"success": False, "error": "Failed to update permissions"}), 500
+
+        # Success response
+        return jsonify({"success": True, "message": "User added to note successfully using global permissions"}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
